@@ -1,2 +1,2 @@
-generic leaderboards website
-mostly as an "exercise" to learn rust
+generic leaderboards website <br/>
+mostly as a rust practice
