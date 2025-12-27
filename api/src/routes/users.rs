@@ -1,34 +1,45 @@
-use crate::response::{ApiError, ApiResponse};
-use axum::{extract::Path};
-use serde::Serialize;
+use crate::models::User;
+use crate::response::{ApiError, ApiResponse, BasicMessage};
+use axum::{extract::{Path, State, Json}, debug_handler};
+use serde::Deserialize;
+use sqlx::SqlitePool;
 
-#[derive(Serialize)]
-pub struct User {
-    pub id: u32,
+#[derive(Deserialize)]
+pub struct CreateUserRequest {
     pub username: String,
 }
 
-pub async fn get_users() -> Result<ApiResponse<Vec<User>>, ApiError> {
-    let users = vec![
-        User {
-            id: 1,
-            username: "user1".to_string(),
-        },
-        User {
-            id: 2,
-            username: "user2".to_string(),
-        },
-    ];
+#[debug_handler]
+pub async fn create_user(
+    State(pool): State<SqlitePool>,
+    Json(payload): Json<CreateUserRequest>,
+) -> Result<ApiResponse<User>, ApiError> {
+    let user = sqlx::query_as::<_, User>(
+        "INSERT INTO user (username) VALUES (?) RETURNING id, username, created_at"
+    )
+    .bind(&payload.username)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
+
+    Ok(ApiResponse::JsonData(user))
+}
+
+pub async fn get_users(State(pool): State<SqlitePool>) -> Result<ApiResponse<Vec<User>>, ApiError> {
+    let users: Vec<User> = sqlx::query_as::<_, User>("SELECT id, username, created_at FROM user")
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
 
     Ok(ApiResponse::JsonData(users))
 }
 
-// soon DB
-pub async fn get_user(Path(id): Path<u32>) -> Result<ApiResponse<User>, ApiError> {
-    let user = User {
-        id,
-        username: format!("user{}", id),
-    };
+pub async fn get_user(Path(id): Path<i64>, State(pool): State<SqlitePool>) -> Result<ApiResponse<User>, ApiError> {
+    let user: User = sqlx::query_as::<_, User>("SELECT id, username, created_at FROM user WHERE id = ?")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
 
     Ok(ApiResponse::JsonData(user))
 }
