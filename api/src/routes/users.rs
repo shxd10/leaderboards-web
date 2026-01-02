@@ -1,14 +1,24 @@
-use crate::models::{User, UserAuth};
-use crate::response::{ApiError, ApiResponse, BasicMessage};
-use axum::{extract::{Path, State, Json}};
+use crate::{
+    models::{User, UserLoginData},
+    response::{ApiError, ApiResponse, BasicMessage},
+    routes::{Claims, AuthenticatedUser, JWT_SECRET}
+};
+use axum::{extract::{Path, State, Json, Extension}};
 use serde::{Serialize, Deserialize};
 use sqlx::SqlitePool;
 use argon2::{password_hash::{rand_core::OsRng, SaltString}, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use chrono::Utc;
 
 #[derive(Deserialize)]
 pub struct CreateUserRequest {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct LoginResponse {
+    pub token: String,
 }
 
 #[derive(Deserialize)]
@@ -40,37 +50,52 @@ pub async fn create_user(
     Ok(ApiResponse::JsonData(user))
 }
 
-pub async fn verify_user(
+pub async fn login(
     State(pool): State<SqlitePool>,
     Json(payload): Json<CreateUserRequest>,
-) -> Result<ApiResponse<BasicMessage>, ApiError> {
-    let user_auth = sqlx::query_as::<_, UserAuth>(
-        "SELECT password_hash FROM user WHERE username = ?"
+) -> Result<ApiResponse<LoginResponse>, ApiError> {
+    let user_login_data = sqlx::query_as::<_, UserLoginData>(
+        "SELECT id, password_hash FROM user WHERE username = ?"
     )
     .bind(&payload.username)
     .fetch_optional(&pool)
     .await
     .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
 
-    let user_auth = match user_auth {
+    let user_login_data = match user_login_data {
         Some(r) => r,
-        None => {
-            return Err(ApiError::Unauthorized(
-                "Invalid username or password".to_string(),
-            ))
-        }
+        None => return Err(ApiError::Unauthorized("Invalid username or password".into())),
     };
 
-    let parsed_hash = PasswordHash::new(&user_auth.password_hash)
-        .map_err(|_| ApiError::InternalServerError("Invalid password hash (error from database)".to_string()))?;
+    let parsed_hash = PasswordHash::new(&user_login_data.password_hash)
+        .map_err(|_| ApiError::InternalServerError("Invalid password hash".to_string()))?;
 
     Argon2::default()
         .verify_password(payload.password.as_bytes(), &parsed_hash)
         .map_err(|_| ApiError::Unauthorized("Invalid username or password".to_string()))?;
 
-    Ok(ApiResponse::JsonData(BasicMessage {
-        msg: "Password verified".to_string(),
-    }))
+    // create JWT
+    let expiration = Utc::now().timestamp() as usize + 24*60*60;
+    let claims = Claims { sub: user_login_data.id, exp: expiration };
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(&JWT_SECRET))
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
+
+    Ok(ApiResponse::JsonData(LoginResponse { token }))
+}
+
+pub async fn current_user_info(
+    State(pool): State<SqlitePool>,
+    Extension(auth): Extension<AuthenticatedUser>,
+) -> Result<ApiResponse<User>, ApiError> {
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, username, created_at FROM user WHERE id = ?"
+    )
+    .bind(auth.id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| ApiError::Unauthorized("User not found".into()))?;
+
+    Ok(ApiResponse::JsonData(user))
 }
 
 pub async fn get_user(

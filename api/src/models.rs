@@ -3,6 +3,7 @@ use serde::Serialize;
 
 // DB struct models
 
+// exposed user
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct User {
     pub id: i64,
@@ -11,6 +12,7 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize)]
-pub struct UserAuth {
+pub struct UserLoginData {
+    pub id: i64,
     pub password_hash: String,
 }
