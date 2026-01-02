@@ -9,3 +9,8 @@ pub struct User {
     pub username: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct UserAuth {
+    pub password_hash: String,
+}

@@ -1,0 +1,36 @@
+CREATE TABLE user (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE team (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    leader_id INTEGER NOT NULL,
+    FOREIGN KEY (leader_id) REFERENCES user(id) ON DELETE CASCADE
+);
+
+CREATE TABLE user_team (
+    user_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, team_id),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (team_id) REFERENCES team(id) ON DELETE CASCADE
+);
+
+CREATE TABLE cup (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE record (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    cup_id INTEGER NOT NULL,
+    proof TEXT NOT NULL,
+    submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (cup_id) REFERENCES cup(id) ON DELETE CASCADE
+);
